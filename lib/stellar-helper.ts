@@ -21,6 +21,8 @@ function isBrowser(): boolean {
   return typeof window !== "undefined";
 }
 
+let kitInitialized = false;
+
 export class WalletNotFoundError extends Error {
   name = "WalletNotFoundError";
 }
@@ -133,9 +135,16 @@ export class StellarHelper {
         ? Networks.TESTNET
         : Networks.PUBLIC;
 
-    StellarWalletsKit.init({
-      network: network === "testnet" ? SwkNetworks.TESTNET : SwkNetworks.PUBLIC,
-    });
+    if (isBrowser() && !kitInitialized) {
+      try {
+        StellarWalletsKit.init({
+          network: network === "testnet" ? SwkNetworks.TESTNET : SwkNetworks.PUBLIC,
+        });
+        kitInitialized = true;
+      } catch (e) {
+        console.warn("Failed to init StellarWalletsKit:", e);
+      }
+    }
   }
 
   async getSupportedWallets(): Promise<ISupportedWallet[]> {
