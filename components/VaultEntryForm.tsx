@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { FaPaperPlane, FaArrowDown, FaArrowUp } from "react-icons/fa";
-import { createContractClient, TxProgress } from "@/lib/contract-client";
+import { createContractClient } from "@/lib/contract-client";
+import type { TxProgress } from "@/lib/contract-client";
 import {
   WalletRejectedError,
   InsufficientBalanceError,
@@ -38,8 +39,8 @@ export function VaultEntryForm({ publicKey, onSuccess }: VaultEntryFormProps) {
       newErrors.amount = "Please enter a valid number";
     }
 
-    if (memo.length > 50) {
-      newErrors.memo = "Memo must be 50 characters or less";
+    if (memo.length > 15) {
+      newErrors.memo = "Memo must be 15 characters or less";
     }
 
     setErrors(newErrors);
@@ -182,7 +183,7 @@ export function VaultEntryForm({ publicKey, onSuccess }: VaultEntryFormProps) {
             error={errors.memo}
             hint={
               <span className="text-textMuted text-xs text-right block">
-                {memo.length}/50
+                {memo.length}/15
               </span>
             }
           />

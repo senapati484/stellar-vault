@@ -1,4 +1,8 @@
-import { stellar, WalletRejectedError, InsufficientBalanceError, NetworkError } from "./stellar-helper";
+import { stellar, NetworkError } from "./stellar-helper";
+import {
+  WalletRejectedError,
+  InsufficientBalanceError,
+} from "./stellar-helper";
 
 export type TxProgress =
   | { stage: "idle" }
@@ -43,7 +47,7 @@ export class ContractClient {
         from: ownerKey,
         to: ownerKey,
         amount: amount,
-        memo: `${ownerKey}:${action}:${Math.floor(parseFloat(amount) * 10_000_000)}:${memo}`,
+        memo: `${action === "deposit" ? "d" : "w"}:${Math.floor(parseFloat(amount) * 10_000_000)}:${memo}`,
       });
 
       this.setProgress({ stage: "submitting", message: "Broadcasting to network…" });
@@ -92,12 +96,20 @@ export class ContractClient {
       for (const tx of result.transactions) {
         if (tx.memo) {
           const parts = tx.memo.split(":");
-          if (parts.length >= 4) {
+          if (parts[0].startsWith("G") && parts.length >= 4) {
             entries.push({
               owner: parts[0],
               action: parts[1],
               amount: parseInt(parts[2], 10),
               memo: parts.slice(3).join(":"),
+              timestamp: new Date(tx.created_at).getTime(),
+            });
+          } else if ((parts[0] === "d" || parts[0] === "w") && parts.length >= 3) {
+            entries.push({
+              owner: tx.source_account,
+              action: parts[0] === "d" ? "deposit" : "withdraw",
+              amount: parseInt(parts[1], 10),
+              memo: parts.slice(2).join(":"),
               timestamp: new Date(tx.created_at).getTime(),
             });
           }
@@ -119,12 +131,20 @@ export class ContractClient {
       for (const tx of result.transactions) {
         if (tx.memo) {
           const parts = tx.memo.split(":");
-          if (parts.length >= 4 && parts[0] === ownerKey) {
+          if (parts[0].startsWith("G") && parts.length >= 4 && parts[0] === ownerKey) {
             entries.push({
               owner: parts[0],
               action: parts[1],
               amount: parseInt(parts[2], 10),
               memo: parts.slice(3).join(":"),
+              timestamp: new Date(tx.created_at).getTime(),
+            });
+          } else if ((parts[0] === "d" || parts[0] === "w") && parts.length >= 3 && tx.source_account === ownerKey) {
+            entries.push({
+              owner: tx.source_account,
+              action: parts[0] === "d" ? "deposit" : "withdraw",
+              amount: parseInt(parts[1], 10),
+              memo: parts.slice(2).join(":"),
               timestamp: new Date(tx.created_at).getTime(),
             });
           }

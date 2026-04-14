@@ -3,14 +3,16 @@
 import { useState, useEffect } from "react";
 import { FaWallet, FaSync, FaCoins } from "react-icons/fa";
 import { CachedBadge, SkeletonLoader, Alert, ProgressBar } from "@/components/ui";
-import { stellar, Asset } from "@/lib/stellar-helper";
+import { stellar } from "@/lib/stellar-helper";
+import type { Asset } from "@/lib/stellar-helper";
 
 interface BalanceCardProps {
   publicKey: string;
   onRefresh?: () => void;
+  refreshTrigger?: number;
 }
 
-export function BalanceCard({ publicKey, onRefresh }: BalanceCardProps) {
+export function BalanceCard({ publicKey, onRefresh, refreshTrigger }: BalanceCardProps) {
   const [balance, setBalance] = useState("0");
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,7 +49,7 @@ export function BalanceCard({ publicKey, onRefresh }: BalanceCardProps) {
     }, 60000);
 
     return () => clearInterval(interval);
-  }, [publicKey]);
+  }, [publicKey, refreshTrigger]);
 
   const handleRefresh = () => {
     fetchBalance(true);
