@@ -149,6 +149,22 @@ export class StellarHelper {
 
   async getSupportedWallets(): Promise<ISupportedWallet[]> {
     await new Promise(resolve => setTimeout(resolve, 500));
+    
+    if (!kitInitialized && isBrowser()) {
+      try {
+        StellarWalletsKit.init({
+          network: this.network === "testnet" ? SwkNetworks.TESTNET : SwkNetworks.PUBLIC,
+        });
+        kitInitialized = true;
+      } catch (e) {
+        console.warn("Failed to init StellarWalletsKit:", e);
+      }
+    }
+    
+    if (!StellarWalletsKit.refreshSupportedWallets) {
+      return [];
+    }
+    
     return StellarWalletsKit.refreshSupportedWallets();
   }
 
@@ -163,6 +179,9 @@ export class StellarHelper {
     }
 
     try {
+      if (!StellarWalletsKit.authModal) {
+        throw new Error("Wallet modal not available");
+      }
       const result = await StellarWalletsKit.authModal({});
 
       this.publicKey = result.address;
