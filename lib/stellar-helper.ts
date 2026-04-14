@@ -161,11 +161,18 @@ export class StellarHelper {
       }
     }
     
-    if (!StellarWalletsKit.refreshSupportedWallets) {
+    const refreshFn = StellarWalletsKit.refreshSupportedWallets;
+    if (!refreshFn || typeof refreshFn !== "function") {
       return [];
     }
     
-    return StellarWalletsKit.refreshSupportedWallets();
+    try {
+      const result = await refreshFn();
+      return Array.isArray(result) ? result : [];
+    } catch (e) {
+      console.warn("Failed to refresh wallets:", e);
+      return [];
+    }
   }
 
   async connectWallet(): Promise<string> {
