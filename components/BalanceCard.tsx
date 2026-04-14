@@ -5,6 +5,7 @@ import { FaWallet, FaSync, FaCoins } from "react-icons/fa";
 import { CachedBadge, SkeletonLoader, Alert, ProgressBar } from "@/components/ui";
 import { stellar } from "@/lib/stellar-helper";
 import type { Asset } from "@/lib/stellar-helper";
+import { createContractClient } from "@/lib/contract-client";
 
 interface BalanceCardProps {
   publicKey: string;
@@ -28,7 +29,24 @@ export function BalanceCard({ publicKey, onRefresh, refreshTrigger }: BalanceCar
 
     try {
       const result = await stellar.getBalance(publicKey, forceRefresh);
-      setBalance(result.xlm);
+      
+      // Calculate realistic "mock" balance since native self-payments don't change actual XLM
+      const client = createContractClient();
+      const entries = await client.getEntriesByOwner(publicKey);
+      const totalDeposited = entries
+        .filter((e) => e.action === "deposit")
+        .reduce((sum, e) => sum + e.amount, 0);
+      const totalWithdrawn = entries
+        .filter((e) => e.action === "withdraw")
+        .reduce((sum, e) => sum + e.amount, 0);
+      
+      const netFlowXlm = (totalDeposited - totalWithdrawn) / 10_000_000;
+      const realXlm = parseFloat(result.xlm);
+      
+      // Subtract net flow (deposits minus withdrawals) to simulate XLM leaving/entering the wallet
+      const simulatedXlm = Math.max(0, realXlm - netFlowXlm);
+
+      setBalance(simulatedXlm.toString());
       setAssets(result.assets);
       setCached(result.cached);
       setLastFetched(new Date());
