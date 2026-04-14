@@ -137,33 +137,51 @@ export class StellarHelper {
     // Load module dynamically
     const swk = await import("@creit.tech/stellar-wallets-kit");
     const { defaultModules } = await import("@creit.tech/stellar-wallets-kit/modules/utils");
-    const Kit = swk.StellarWalletsKit;
-    
-    console.log("Kit loaded:", !!Kit, "defaultModules:", typeof defaultModules);
+    const { Networks } = await import("@creit.tech/stellar-wallets-kit");
+    const StellarWalletsKit = swk.StellarWalletsKit;
 
+    // Initialize kit once
     if (!kitInitialized) {
       try {
-        console.log("Initializing with network:", this.networkPassphrase);
-        (Kit as any).init({ 
-          network: this.networkPassphrase,
-          modules: defaultModules() 
+        const kitNetwork = this.network === "testnet" ? Networks.TESTNET : Networks.PUBLIC;
+        console.log("Initializing StellarWalletsKit with network:", kitNetwork);
+        StellarWalletsKit.init({
+          network: kitNetwork,
+          modules: defaultModules(),
         });
         kitInitialized = true;
+        console.log("StellarWalletsKit initialized successfully");
       } catch (e: unknown) {
-        console.warn("kit init failed:", e);
+        console.error("kit init failed:", e);
+        throw new NetworkError(`Failed to initialize wallet: ${e}`);
       }
     }
 
     try {
-      const result = await Kit.fetchAddress();
+      // Open wallet selector modal and get address
+      // authModal opens a modal where user picks wallet, sets it as active, and returns address
+      console.log("Calling StellarWalletsKit.authModal()...");
+      const result = await StellarWalletsKit.authModal();
+      console.log("authModal result:", result);
       if (result.address) {
         this.publicKey = result.address;
         return result.address;
       }
       throw new WalletNotFoundError("No wallet connected. Please authorize in your wallet.");
     } catch (error) {
-      const errMsg = error instanceof Error ? error.message : String(error);
-      if (errMsg.includes("closed") || errMsg.includes("cancel") || errMsg.includes("rejected")) {
+      console.error("connectWallet error:", error);
+      // The wallet kit throws plain objects or errors with empty messages when:
+      // - User closes the modal
+      // - No wallet is available/installed
+      // These are considered cancellation/rejection events
+      const errMsg = error instanceof Error ? error.message : "";
+      const isNonInformativeError = !errMsg || errMsg === "undefined" || errMsg === "[object Object]";
+      if (isNonInformativeError) {
+        throw new WalletRejectedError("Wallet connection was cancelled or no wallet selected");
+      }
+      if (error instanceof WalletNotFoundError) throw error;
+      const isCancelled = errMsg.includes("closed") || errMsg.includes("cancel") || errMsg.includes("rejected");
+      if (isCancelled) {
         throw new WalletRejectedError("Wallet connection was cancelled");
       }
       throw error;
@@ -194,6 +212,7 @@ export class StellarHelper {
 
   disconnect(): void {
     this.publicKey = null;
+    kitInitialized = false;
     this.cache.balance.invalidateAll();
     this.cache.transactions.invalidateAll();
     this.cache.account.invalidateAll();
@@ -334,14 +353,25 @@ export class StellarHelper {
 
       const transaction = builder.build();
 
-      const swk = await import("@creit.tech/stellar-wallets-kit");
-      const Kit = swk.StellarWalletsKit;
-      if (!Kit) {
-        throw new NetworkError("Wallet library not loaded");
+      let swk: typeof import("@creit.tech/stellar-wallets-kit");
+      if (!kitInitialized) {
+        swk = await import("@creit.tech/stellar-wallets-kit");
+        const { defaultModules } = await import("@creit.tech/stellar-wallets-kit/modules/utils");
+        const { Networks } = await import("@creit.tech/stellar-wallets-kit");
+        const kitNetwork = this.network === "testnet" ? Networks.TESTNET : Networks.PUBLIC;
+        swk.StellarWalletsKit.init({
+          network: kitNetwork,
+          modules: defaultModules(),
+        });
+        kitInitialized = true;
+      } else {
+        swk = await import("@creit.tech/stellar-wallets-kit");
       }
 
-      const { signedTxXdr } = await Kit.signTransaction(transaction.toXDR(), {
+      const addressResult = await swk.StellarWalletsKit.getAddress();
+      const { signedTxXdr } = await swk.StellarWalletsKit.signTransaction(transaction.toXDR(), {
         networkPassphrase: this.networkPassphrase,
+        address: addressResult.address,
       });
 
       const parsedTx = new StellarTransaction(signedTxXdr, this.networkPassphrase);

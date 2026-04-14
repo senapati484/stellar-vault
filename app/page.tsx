@@ -15,6 +15,7 @@ export default function Home() {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const checkConnection = async () => {
@@ -47,11 +48,13 @@ export default function Home() {
 
   const handleConnectWallet = async () => {
     setIsLoading(true);
+    setError(null);
     try {
       const key = await stellar.connectWallet();
       handleConnect(key);
     } catch (err) {
-      console.error("Failed to connect:", err);
+      const message = err instanceof Error ? err.message : "Failed to connect wallet";
+      setError(message);
     } finally {
       setIsLoading(false);
     }
@@ -85,6 +88,9 @@ export default function Home() {
               >
                 Connect Wallet
               </Button>
+              {error && (
+                <p className="text-red-400 text-sm mt-3">{error}</p>
+              )}
               <p className="text-textMuted text-xs mt-3">
                 Supports Freighter, xBull, Albedo, Rabet, Lobstr + more
               </p>
