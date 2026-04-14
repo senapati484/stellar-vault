@@ -30,7 +30,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${inter.variable} ${fraunces.variable} ${jetbrainsMono.variable}`}>
-      <body className="bg-background text-textMain antialiased min-h-screen">
+      <body className="bg-background text-textMain antialiased min-h-screen" suppressHydrationWarning>
         {children}
       </body>
     </html>
