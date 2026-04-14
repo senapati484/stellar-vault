@@ -1,4 +1,0 @@
-* linguist-vendored
-*.ts linguist-detectable=true
-*.tsx linguist-detectable=true
-*.css linguist-detectable=true
