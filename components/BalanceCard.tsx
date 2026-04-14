@@ -43,8 +43,8 @@ export function BalanceCard({ publicKey, onRefresh, refreshTrigger }: BalanceCar
       const netFlowXlm = (totalDeposited - totalWithdrawn) / 10_000_000;
       const realXlm = parseFloat(result.xlm);
       
-      // Subtract net flow (deposits minus withdrawals) to simulate XLM leaving/entering the wallet
-      const simulatedXlm = Math.max(0, realXlm - netFlowXlm);
+      // Add net flow (deposits minus withdrawals) to simulate XLM being added to the overall mocked portfolio
+      const simulatedXlm = Math.max(0, realXlm + netFlowXlm);
 
       setBalance(simulatedXlm.toString());
       setAssets(result.assets);
