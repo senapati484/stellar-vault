@@ -148,26 +148,39 @@ export class StellarHelper {
   }
 
   async getSupportedWallets(): Promise<ISupportedWallet[]> {
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise(resolve => setTimeout(resolve, 1000));
     
-    if (!kitInitialized && isBrowser()) {
+    console.log("StellarWalletsKit:", StellarWalletsKit);
+    console.log("isBrowser:", isBrowser());
+    console.log("kitInitialized:", kitInitialized);
+    
+    if (!isBrowser()) {
+      console.log("Not in browser, returning empty");
+      return [];
+    }
+    
+    if (!kitInitialized) {
       try {
         StellarWalletsKit.init({
           network: this.network === "testnet" ? SwkNetworks.TESTNET : SwkNetworks.PUBLIC,
         });
         kitInitialized = true;
+        console.log("Kit initialized");
       } catch (e) {
         console.warn("Failed to init StellarWalletsKit:", e);
       }
     }
     
     const refreshFn = StellarWalletsKit.refreshSupportedWallets;
+    console.log("refreshFn:", refreshFn);
+    
     if (!refreshFn || typeof refreshFn !== "function") {
       return [];
     }
     
     try {
       const result = await refreshFn();
+      console.log("Wallets result:", result);
       return Array.isArray(result) ? result : [];
     } catch (e) {
       console.warn("Failed to refresh wallets:", e);
