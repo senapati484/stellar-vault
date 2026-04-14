@@ -15,6 +15,12 @@ import {
   ISupportedWallet,
 } from "@creit.tech/stellar-wallets-kit";
 
+const FREIGHTER_ID = "freighter";
+
+function isBrowser(): boolean {
+  return typeof window !== "undefined";
+}
+
 export class WalletNotFoundError extends Error {
   name = "WalletNotFoundError";
 }
@@ -129,11 +135,11 @@ export class StellarHelper {
 
     StellarWalletsKit.init({
       network: network === "testnet" ? SwkNetworks.TESTNET : SwkNetworks.PUBLIC,
-      modules: [],
     });
   }
 
   async getSupportedWallets(): Promise<ISupportedWallet[]> {
+    await new Promise(resolve => setTimeout(resolve, 500));
     return StellarWalletsKit.refreshSupportedWallets();
   }
 
