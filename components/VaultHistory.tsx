@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { FaSearch, FaArrowDown, FaArrowUp, FaSync } from "react-icons/fa";
-import { createContractClient, VaultEntry } from "@/lib/contract-client";
+import { createContractClient } from "@/lib/contract-client";
+import type { VaultEntry } from "@/lib/contract-client";
 import { stellar } from "@/lib/stellar-helper";
 import {
   CachedBadge,

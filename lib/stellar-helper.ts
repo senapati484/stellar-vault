@@ -1,14 +1,6 @@
 import * as StellarSdk from "@stellar/stellar-sdk";
-import {
-  Horizon,
-  Asset as StellarAsset,
-  Keypair,
-  TransactionBuilder,
-  Networks as StellarNetworks,
-  Operation,
-  Memo,
-  Transaction as StellarTransaction,
-} from "@stellar/stellar-sdk";
+import { Horizon, Networks as StellarNetworks, TransactionBuilder, Operation, Asset as StellarAsset, Memo, Transaction as StellarTransaction } from "@stellar/stellar-sdk";
+import type { Keypair } from "@stellar/stellar-sdk";
 
 function isBrowser(): boolean {
   return typeof window !== "undefined";

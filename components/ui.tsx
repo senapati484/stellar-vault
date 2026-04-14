@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { TxProgress } from "@/lib/contract-client";
+import type { TxProgress } from "@/lib/contract-client";
 import {
   FaCheck,
   FaExclamationTriangle,

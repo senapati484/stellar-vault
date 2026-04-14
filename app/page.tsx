@@ -42,7 +42,10 @@ export default function Home() {
     setIsConnected(false);
   };
 
-  const handleSuccess = () => {
+  const handleSuccess = async () => {
+    // Force-refresh balance to bypass stale cache and get fresh data from Horizon
+    // This primes the cache so BalanceCard's next poll gets fresh data
+    await stellar.getBalance(publicKey, true);
     setRefreshTrigger((prev) => prev + 1);
   };
 

@@ -61,6 +61,9 @@ export function VaultEntryForm({ publicKey, onSuccess }: VaultEntryFormProps) {
         memo,
       });
 
+      // Add delay to allow Horizon to index the transaction before fetching balance
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+
       onSuccess();
 
       setTimeout(() => {
