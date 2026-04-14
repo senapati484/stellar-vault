@@ -1,5 +1,7 @@
 # StellarVault — Level 3 Orange Belt
 
+Created by: [senapati484](https://github.com/senapati484)
+
 [![Next.js 14](https://img.shields.io/badge/Next.js_14-000000?style=flat&logo=next.js)](https://nextjs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript)](https://www.typescriptlang.org)
 [![Soroban](https://img.shields.io/badge/Soroban-FFFFFF?style=flat&logo=stellar)](https://soroban.stellar.org)
@@ -20,7 +22,7 @@ Level 3 demonstrates professional-grade dApp development including:
 
 ## Live Demo
 
-**URL:** [FILL IN — Vercel URL, e.g., https://stellar-vault.vercel.app]
+**URL:** [https://stellar-vault-challenge.vercel.app](https://stellar-vault-challenge.vercel.app)
 
 **Demo Video:** [FILL IN — YouTube/Loom 1-minute video link]
 
@@ -129,7 +131,7 @@ stellar-vault/
 
 ## Smart Contract
 
-**Contract ID:** [FILL IN — After deployment run `./scripts/deploy.sh`]
+**Contract ID:** `Native Simulation Mode` (Soroban Smart Contract in codebase, implemented with Stellar Native Transactions in UI)
 
 **Network:** Stellar Testnet (Test SDF Network ; September 2015)
 
@@ -264,8 +266,7 @@ The TxProgressStepper component renders the current stage with animated transiti
 
 ```bash
 # Clone the repository
-git clone [your-repo-url]
-cd stellar-vault
+git clone https://github.com/senapati484/stellar-vault-challenge.git
 
 # Install dependencies
 npm install
@@ -340,7 +341,7 @@ StellarVault supports multiple Stellar wallets via StellarWalletsKit (allowAllMo
 
 ## Contract Transaction Hash
 
-**Sample entry transaction:** [FILL IN from `./scripts/deploy.sh` output]
+**Sample entry transaction:** Native Transaction ID from testnet
 
 **Verify:** https://stellar.expert/explorer/testnet/tx/[TRANSACTION_HASH]
 
