@@ -1,0 +1,8 @@
+[workspace]
+members = ["contracts/stellar_vault"]
+resolver = "2"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1

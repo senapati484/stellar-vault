@@ -1,65 +1,183 @@
-import Image from "next/image";
+"use client";
+
+import { useState, useEffect } from "react";
+import { stellar } from "@/lib/stellar-helper";
+import { Navbar } from "@/components/Navbar";
+import { BalanceCard } from "@/components/BalanceCard";
+import { VaultEntryForm } from "@/components/VaultEntryForm";
+import { VaultHistory } from "@/components/VaultHistory";
+import { StatsPanel } from "@/components/StatsPanel";
+import { Button } from "@/components/ui";
 
 export default function Home() {
+  const [publicKey, setPublicKey] = useState("");
+  const [isConnected, setIsConnected] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    const checkConnection = async () => {
+      const connected = await stellar.isConnected();
+      if (connected) {
+        const address = await stellar.getAddress();
+        if (address) {
+          setPublicKey(address);
+          setIsConnected(true);
+        }
+      }
+    };
+    checkConnection();
+  }, []);
+
+  const handleConnect = async (key: string) => {
+    setPublicKey(key);
+    setIsConnected(true);
+  };
+
+  const handleDisconnect = () => {
+    stellar.disconnect();
+    setPublicKey("");
+    setIsConnected(false);
+  };
+
+  const handleSuccess = () => {
+    setRefreshTrigger((prev) => prev + 1);
+  };
+
+  const handleConnectWallet = async () => {
+    setIsLoading(true);
+    try {
+      const key = await stellar.connectWallet();
+      handleConnect(key);
+    } catch (err) {
+      console.error("Failed to connect:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <div className="relative min-h-screen flex flex-col">
+      <Navbar
+        publicKey={publicKey}
+        isConnected={isConnected}
+        onConnect={handleConnect}
+        onDisconnect={handleDisconnect}
+      />
+
+      <main className="flex-1 w-full max-w-[1200px] mx-auto px-4 sm:px-6 py-10 sm:py-14">
+        {!isConnected ? (
+          <div className="animate-fade-in">
+            <div className="bg-surface border border-borderInner rounded-2xl shadow-sm mb-10 px-6 py-20 text-center">
+              <h1 className="font-serif text-5xl sm:text-6xl font-medium tracking-tight text-textMain mb-4">
+                StellarVault
+              </h1>
+              <p className="text-textMuted text-base sm:text-lg leading-relaxed max-w-xl mx-auto mb-8">
+                A personal asset vault powered by Soroban smart contracts on the
+                Stellar testnet.
+              </p>
+              <Button
+                variant="primary"
+                onClick={handleConnectWallet}
+                loading={isLoading}
+                className="px-8 py-3 text-base"
+              >
+                Connect Wallet
+              </Button>
+              <p className="text-textMuted text-xs mt-3">
+                Supports Freighter, xBull, Albedo, Rabet, Lobstr + more
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 animate-slide-up stagger-2 mt-8">
+              <div className="claude-card p-6">
+                <div className="w-10 h-10 bg-surface border border-borderInner rounded-lg flex items-center justify-center mb-4">
+                  <span className="text-xl">🔐</span>
+                </div>
+                <h3 className="font-serif font-medium text-textMain mb-2">
+                  Connect
+                </h3>
+                <p className="text-textMuted text-sm">
+                  Link any Stellar wallet via StellarWalletsKit
+                </p>
+              </div>
+
+              <div className="claude-card p-6">
+                <div className="w-10 h-10 bg-surface border border-borderInner rounded-lg flex items-center justify-center mb-4">
+                  <span className="text-xl">📊</span>
+                </div>
+                <h3 className="font-serif font-medium text-textMain mb-2">
+                  Track
+                </h3>
+                <p className="text-textMuted text-sm">
+                  Record deposits and withdrawals on-chain
+                </p>
+              </div>
+
+              <div className="claude-card p-6">
+                <div className="w-10 h-10 bg-surface border border-borderInner rounded-lg flex items-center justify-center mb-4">
+                  <span className="text-xl">⚡</span>
+                </div>
+                <h3 className="font-serif font-medium text-textMain mb-2">
+                  Fast
+                </h3>
+                <p className="text-textMuted text-sm">
+                  Soroban contracts confirm in ~5 seconds
+                </p>
+              </div>
+
+              <div className="claude-card p-6">
+                <div className="w-10 h-10 bg-surface border border-borderInner rounded-lg flex items-center justify-center mb-4">
+                  <span className="text-xl">🔍</span>
+                </div>
+                <h3 className="font-serif font-medium text-textMain mb-2">
+                  Transparent
+                </h3>
+                <p className="text-textMuted text-sm">
+                  All entries verifiable on Stellar Expert
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-6 animate-fade-in">
+            <StatsPanel
+              publicKey={publicKey}
+              refreshTrigger={refreshTrigger}
+            />
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-1 space-y-6">
+                <BalanceCard publicKey={publicKey} />
+              </div>
+              <div className="lg:col-span-2">
+                <VaultEntryForm
+                  publicKey={publicKey}
+                  onSuccess={handleSuccess}
+                />
+              </div>
+            </div>
+
+            <VaultHistory
+              key={`history-${refreshTrigger}`}
+              publicKey={publicKey}
+              refreshTrigger={refreshTrigger}
+            />
+          </div>
+        )}
+      </main>
+
+      <footer className="border-t border-borderOuter bg-background mt-auto">
+        <div className="max-w-[1200px] mx-auto px-6 py-6 text-center text-textMuted text-xs">
+          <p className="font-medium mb-1">
+            StellarVault · Soroban Testnet · Level 3 Orange Belt
+          </p>
+          <p className="opacity-70 uppercase tracking-widest">
+            Do not use real funds
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+      </footer>
     </div>
   );
 }
