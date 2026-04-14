@@ -4,18 +4,11 @@ import {
   Asset as StellarAsset,
   Keypair,
   TransactionBuilder,
-  Networks,
+  Networks as StellarNetworks,
   Operation,
   Memo,
   Transaction as StellarTransaction,
 } from "@stellar/stellar-sdk";
-import {
-  StellarWalletsKit,
-  Networks as SwkNetworks,
-  ISupportedWallet,
-} from "@creit.tech/stellar-wallets-kit";
-
-const FREIGHTER_ID = "freighter";
 
 function isBrowser(): boolean {
   return typeof window !== "undefined";
@@ -132,84 +125,46 @@ export class StellarHelper {
 
     this.networkPassphrase =
       network === "testnet"
-        ? Networks.TESTNET
-        : Networks.PUBLIC;
-
-    if (isBrowser() && !kitInitialized) {
-      try {
-        StellarWalletsKit.init({
-          network: network === "testnet" ? SwkNetworks.TESTNET : SwkNetworks.PUBLIC,
-        });
-        kitInitialized = true;
-      } catch (e) {
-        console.warn("Failed to init StellarWalletsKit:", e);
-      }
-    }
-  }
-
-  async getSupportedWallets(): Promise<ISupportedWallet[]> {
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    console.log("StellarWalletsKit:", StellarWalletsKit);
-    console.log("isBrowser:", isBrowser());
-    console.log("kitInitialized:", kitInitialized);
-    
-    if (!isBrowser()) {
-      console.log("Not in browser, returning empty");
-      return [];
-    }
-    
-    if (!kitInitialized) {
-      try {
-        StellarWalletsKit.init({
-          network: this.network === "testnet" ? SwkNetworks.TESTNET : SwkNetworks.PUBLIC,
-        });
-        kitInitialized = true;
-        console.log("Kit initialized");
-      } catch (e) {
-        console.warn("Failed to init StellarWalletsKit:", e);
-      }
-    }
-    
-    const refreshFn = StellarWalletsKit.refreshSupportedWallets;
-    console.log("refreshFn:", refreshFn);
-    
-    if (!refreshFn || typeof refreshFn !== "function") {
-      return [];
-    }
-    
-    try {
-      const result = await refreshFn();
-      console.log("Wallets result:", result);
-      return Array.isArray(result) ? result : [];
-    } catch (e) {
-      console.warn("Failed to refresh wallets:", e);
-      return [];
-    }
+        ? StellarNetworks.TESTNET
+        : StellarNetworks.PUBLIC;
   }
 
   async connectWallet(): Promise<string> {
-    const wallets = await this.getSupportedWallets();
-    const available = wallets.filter((w) => w.isAvailable);
+    if (!isBrowser()) {
+      throw new WalletNotFoundError("Must connect in browser");
+    }
 
-    if (available.length === 0) {
-      throw new WalletNotFoundError(
-        "No wallet extension found. Please install a Stellar wallet."
-      );
+    // Load module dynamically
+    const swk = await import("@creit.tech/stellar-wallets-kit");
+    const { defaultModules } = await import("@creit.tech/stellar-wallets-kit/modules/utils");
+    const Kit = swk.StellarWalletsKit;
+    
+    console.log("Kit loaded:", !!Kit, "defaultModules:", typeof defaultModules);
+
+    if (!kitInitialized) {
+      try {
+        console.log("Initializing with network:", this.networkPassphrase);
+        (Kit as any).init({ 
+          network: this.networkPassphrase,
+          modules: defaultModules() 
+        });
+        kitInitialized = true;
+      } catch (e: unknown) {
+        console.warn("kit init failed:", e);
+      }
     }
 
     try {
-      if (!StellarWalletsKit.authModal) {
-        throw new Error("Wallet modal not available");
+      const result = await Kit.fetchAddress();
+      if (result.address) {
+        this.publicKey = result.address;
+        return result.address;
       }
-      const result = await StellarWalletsKit.authModal({});
-
-      this.publicKey = result.address;
-      return result.address;
+      throw new WalletNotFoundError("No wallet connected. Please authorize in your wallet.");
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
-      if (errMsg.includes("closed") || errMsg.includes("cancel")) {
-        throw new WalletRejectedError("Wallet selection was cancelled");
+      if (errMsg.includes("closed") || errMsg.includes("cancel") || errMsg.includes("rejected")) {
+        throw new WalletRejectedError("Wallet connection was cancelled");
       }
       throw error;
     }
@@ -217,7 +172,9 @@ export class StellarHelper {
 
   async isConnected(): Promise<boolean> {
     try {
-      const result = await StellarWalletsKit.getAddress();
+      if (!kitInitialized) return false;
+      const swk = await import("@creit.tech/stellar-wallets-kit");
+      const result = await swk.StellarWalletsKit.getAddress();
       return !!result.address;
     } catch {
       return false;
@@ -226,7 +183,9 @@ export class StellarHelper {
 
   async getAddress(): Promise<string | null> {
     try {
-      const result = await StellarWalletsKit.getAddress();
+      if (!kitInitialized) return null;
+      const swk = await import("@creit.tech/stellar-wallets-kit");
+      const result = await swk.StellarWalletsKit.getAddress();
       return result.address || null;
     } catch {
       return null;
@@ -235,7 +194,6 @@ export class StellarHelper {
 
   disconnect(): void {
     this.publicKey = null;
-    StellarWalletsKit.disconnect();
     this.cache.balance.invalidateAll();
     this.cache.transactions.invalidateAll();
     this.cache.account.invalidateAll();
@@ -376,17 +334,23 @@ export class StellarHelper {
 
       const transaction = builder.build();
 
-      const result = await StellarWalletsKit.signAndSubmitTransaction(
-        transaction.toXDR(),
-        {
-          networkPassphrase: this.networkPassphrase,
-        }
-      );
+      const swk = await import("@creit.tech/stellar-wallets-kit");
+      const Kit = swk.StellarWalletsKit;
+      if (!Kit) {
+        throw new NetworkError("Wallet library not loaded");
+      }
+
+      const { signedTxXdr } = await Kit.signTransaction(transaction.toXDR(), {
+        networkPassphrase: this.networkPassphrase,
+      });
+
+      const parsedTx = new StellarTransaction(signedTxXdr, this.networkPassphrase);
+      const response = await this.server.submitTransaction(parsedTx);
 
       this.cache.balance.invalidate(`balance:${from}`);
       this.cache.transactions.invalidate(`txs:${from}`);
 
-      return { hash: result.status, success: result.status === "success" };
+      return { hash: response.hash, success: response.successful ?? false };
     } catch (error) {
       if (error instanceof WalletRejectedError) throw error;
       if (error instanceof NetworkError) throw error;
@@ -396,7 +360,7 @@ export class StellarHelper {
 
   getExplorerLink(hash: string, type: "tx" | "account"): string {
     const baseUrl =
-      this.networkPassphrase === Networks.TESTNET
+      this.networkPassphrase === StellarNetworks.TESTNET
         ? "https://stellar.expert/explorer/testnet"
         : "https://stellar.expert/explorer/public";
 
@@ -409,10 +373,6 @@ export class StellarHelper {
   formatAddress(address: string, start = 4, end = 4): string {
     if (address.length <= start + end) return address;
     return `${address.slice(0, start)}...${address.slice(-end)}`;
-  }
-
-  getKit() {
-    return StellarWalletsKit;
   }
 }
 
