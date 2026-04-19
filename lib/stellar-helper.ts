@@ -439,15 +439,25 @@ export class StellarHelper {
 
       const account = await this.sorobanRpc.getAccount(publicKey);
 
+      // First, build and simulate the transaction to get the footprint
       const baseFee = StellarSdk.BASE_FEE;
       const scValArgs = args as StellarSdk.xdr.ScVal[];
-      const transaction = new TransactionBuilder(account, {
+      const transactionForSim = new TransactionBuilder(account, {
         fee: baseFee,
         networkPassphrase: this.networkPassphrase,
       })
         .setTimeout(30)
         .addOperation(this.contract.call(method, ...scValArgs))
         .build();
+
+      // Simulate to get the transaction data and footprint
+      const simResult = await this.sorobanRpc.simulateTransaction(transactionForSim);
+      if ("error" in simResult) {
+        throw new NetworkError(`Simulation failed: ${simResult.error}`);
+      }
+
+      // Now prepare the transaction with the simulated footprint
+      const preparedTx = await this.sorobanRpc.prepareTransaction(transactionForSim);
 
       let swk: typeof import("@creit.tech/stellar-wallets-kit");
       if (!kitInitialized) {
@@ -465,7 +475,7 @@ export class StellarHelper {
       }
 
       this.emitProgress({ stage: "signing", message: "Waiting for wallet signature…" });
-      const { signedTxXdr } = await swk.StellarWalletsKit.signTransaction(transaction.toXDR(), {
+      const { signedTxXdr } = await swk.StellarWalletsKit.signTransaction(preparedTx.toXDR(), {
         networkPassphrase: this.networkPassphrase,
         address: publicKey,
       });
@@ -473,9 +483,7 @@ export class StellarHelper {
       const parsedTx = new StellarTransaction(signedTxXdr, this.networkPassphrase);
 
       this.emitProgress({ stage: "submitting", message: "Broadcasting to network…" });
-      const preparedTx = await this.sorobanRpc.prepareTransaction(parsedTx);
-
-      const sendResult = await this.sorobanRpc.sendTransaction(preparedTx);
+      const sendResult = await this.sorobanRpc.sendTransaction(parsedTx);
 
       this.emitProgress({ stage: "confirming", message: "Waiting for confirmation…" });
       const txResult = await this.sorobanRpc.pollTransaction(sendResult.hash);

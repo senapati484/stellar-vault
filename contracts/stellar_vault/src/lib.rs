@@ -29,8 +29,7 @@ impl StellarVault {
         amount: i128,
         memo: String,
     ) -> u32 {
-        // Note: require_auth() removed - the wallet signature itself serves as verification
-        // For production, implement proper Soroban authorization using signAuthEntry
+        owner.require_auth();
 
         let timestamp = env.ledger().timestamp();
         let entry = VaultEntry {

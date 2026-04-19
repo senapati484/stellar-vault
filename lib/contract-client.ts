@@ -1,5 +1,6 @@
 import { stellar, NetworkError, WalletRejectedError, InsufficientBalanceError } from "./stellar-helper";
 import * as StellarSdk from "@stellar/stellar-sdk";
+import { nativeToScVal } from "@stellar/stellar-sdk";
 
 export type TxProgress =
   | { stage: "idle" }
@@ -43,19 +44,14 @@ export class ContractClient {
     try {
       const amountInSmallestUnit = Math.floor(parseFloat(amount) * 10_000_000);
 
-      const ownerScVal = new StellarSdk.Address(ownerKey).toScVal();
-      const actionScVal = StellarSdk.xdr.ScVal.scvSymbol(action);
-      const amountScVal = StellarSdk.xdr.ScVal.scvI128(
-        new StellarSdk.xdr.Int128Parts({
-          lo: StellarSdk.xdr.Uint64.fromString(String(amountInSmallestUnit)),
-          hi: StellarSdk.xdr.Int64.fromString("0"),
-        })
-      );
-      const memoScVal = StellarSdk.xdr.ScVal.scvString(memo);
-
       const result = await stellar.invokeContract({
         method: "record_entry",
-        args: [ownerScVal, actionScVal, amountScVal, memoScVal],
+        args: [
+          nativeToScVal(ownerKey, { type: "address" }),
+          nativeToScVal(action, { type: "symbol" }),
+          nativeToScVal(amountInSmallestUnit, { type: "i128" }),
+          nativeToScVal(memo, { type: "string" }),
+        ],
         publicKey: ownerKey,
       });
 
@@ -104,8 +100,9 @@ export class ContractClient {
 
   async getEntriesByOwner(ownerKey: string): Promise<VaultEntry[]> {
     try {
-      const ownerScVal = new StellarSdk.Address(ownerKey).toScVal();
-      const result = await stellar.simulateContractCall("get_entries_by_owner", [ownerScVal]);
+      const result = await stellar.simulateContractCall("get_entries_by_owner", [
+        nativeToScVal(ownerKey, { type: "address" }),
+      ]);
       return this.parseEntriesResult(result);
     } catch {
       return [];
