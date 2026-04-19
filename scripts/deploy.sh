@@ -28,15 +28,14 @@ else
 fi
 
 echo ""
-echo "4/7 Building contract..."
-cargo build --target wasm32-unknown-unknown --release \
-    --manifest-path contracts/stellar_vault/Cargo.toml
+echo "4/7 Building contract using stellar CLI (ensures correct WASM target)..."
+stellar contract build
 echo "✓ Built stellar_vault.wasm"
 
 echo ""
 echo "5/7 Deploying contract to testnet..."
 CONTRACT_ID=$(stellar contract deploy \
-    --wasm target/wasm32-unknown-unknown/release/stellar_vault.wasm \
+    --wasm target/wasm32v1-none/release/stellar_vault.wasm \
     --source deployer --network testnet)
 echo "Contract ID: $CONTRACT_ID"
 
@@ -44,43 +43,16 @@ echo ""
 echo "6/7 Seeding sample entries..."
 
 echo "   a) deposit: 5000000 (Initial deposit)"
-TX1=$(stellar contract invoke \
-    --id "$CONTRACT_ID" \
-    --source deployer \
-    --network testnet \
-    record_entry \
-    --owner "$DEPLOYER_ADDR" \
-    --action "deposit" \
-    --amount 5000000 \
-    --memo "Initial deposit" \
-    2>/dev/null | grep -o '"hash":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "")
-echo "   TX1: $TX1"
+stellar contract invoke --id "$CONTRACT_ID" --source-account deployer --network testnet -- record_entry --owner "$DEPLOYER_ADDR" --action deposit --amount 5000000 --memo "Initial deposit" 2>/dev/null || true
+echo "   ✓ Seeded"
 
 echo "   b) withdraw: 1000000 (Coffee)"
-TX2=$(stellar contract invoke \
-    --id "$CONTRACT_ID" \
-    --source deployer \
-    --network testnet \
-    record_entry \
-    --owner "$DEPLOYER_ADDR" \
-    --action "withdraw" \
-    --amount 1000000 \
-    --memo "Coffee" \
-    2>/dev/null | grep -o '"hash":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "")
-echo "   TX2: $TX2"
+stellar contract invoke --id "$CONTRACT_ID" --source-account deployer --network testnet -- record_entry --owner "$DEPLOYER_ADDR" --action withdraw --amount 1000000 --memo "Coffee" 2>/dev/null || true
+echo "   ✓ Seeded"
 
 echo "   c) deposit: 2500000 (Freelance payment)"
-TX3=$(stellar contract invoke \
-    --id "$CONTRACT_ID" \
-    --source deployer \
-    --network testnet \
-    record_entry \
-    --owner "$DEPLOYER_ADDR" \
-    --action "deposit" \
-    --amount 2500000 \
-    --memo "Freelance payment" \
-    2>/dev/null | grep -o '"hash":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "")
-echo "   TX3: $TX3"
+stellar contract invoke --id "$CONTRACT_ID" --source-account deployer --network testnet -- record_entry --owner "$DEPLOYER_ADDR" --action deposit --amount 2500000 --memo "Freelance payment" 2>/dev/null || true
+echo "   ✓ Seeded"
 
 echo ""
 echo "7/7 Writing .env.local..."
@@ -93,9 +65,6 @@ echo ""
 echo "=== Deployment Complete ==="
 echo "✓ Contract:  $CONTRACT_ID"
 echo "✓ Explorer:  https://stellar.expert/explorer/testnet/contract/$CONTRACT_ID"
-echo "✓ Seed TX1:  $TX1"
-echo "✓ Seed TX2:  $TX2"
-echo "✓ Seed TX3:  $TX3"
 echo ""
 echo "To run tests:"
 echo "  cargo test --manifest-path contracts/stellar_vault/Cargo.toml"

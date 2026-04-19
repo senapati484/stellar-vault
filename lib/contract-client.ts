@@ -1,8 +1,5 @@
-import { stellar, NetworkError } from "./stellar-helper";
-import {
-  WalletRejectedError,
-  InsufficientBalanceError,
-} from "./stellar-helper";
+import { stellar, NetworkError, WalletRejectedError, InsufficientBalanceError } from "./stellar-helper";
+import * as StellarSdk from "@stellar/stellar-sdk";
 
 export type TxProgress =
   | { stage: "idle" }
@@ -26,6 +23,7 @@ export class ContractClient {
 
   constructor(onProgress?: (p: TxProgress) => void) {
     this.onProgress = onProgress;
+    stellar.setProgressHandler((p) => this.onProgress?.(p));
   }
 
   private setProgress(progress: TxProgress): void {
@@ -43,22 +41,30 @@ export class ContractClient {
     this.setProgress({ stage: "building", message: "Building transaction…" });
 
     try {
-      const result = await stellar.sendPayment({
-        from: ownerKey,
-        to: ownerKey,
-        amount: amount,
-        memo: `${action === "deposit" ? "d" : "w"}:${Math.floor(parseFloat(amount) * 10_000_000)}:${memo}`,
+      const amountInSmallestUnit = Math.floor(parseFloat(amount) * 10_000_000);
+
+      const ownerScVal = new StellarSdk.Address(ownerKey).toScVal();
+      const actionScVal = StellarSdk.xdr.ScVal.scvSymbol(action);
+      const amountScVal = StellarSdk.xdr.ScVal.scvI128(
+        new StellarSdk.xdr.Int128Parts({
+          lo: StellarSdk.xdr.Uint64.fromString(String(amountInSmallestUnit)),
+          hi: StellarSdk.xdr.Int64.fromString("0"),
+        })
+      );
+      const memoScVal = StellarSdk.xdr.ScVal.scvString(memo);
+
+      const result = await stellar.invokeContract({
+        method: "record_entry",
+        args: [ownerScVal, actionScVal, amountScVal, memoScVal],
+        publicKey: ownerKey,
       });
 
-      this.setProgress({ stage: "submitting", message: "Broadcasting to network…" });
-      this.setProgress({ stage: "confirming", message: "Waiting for confirmation…" });
       this.setProgress({
         stage: "success",
         message: "Transaction confirmed!",
         hash: result.hash,
       });
 
-      stellar.cache.balance.invalidate(`balance:${ownerKey}`);
       stellar.cache.transactions.invalidate(`txs:${ownerKey}`);
 
       return result.hash;
@@ -89,34 +95,8 @@ export class ContractClient {
       const pubKey = await stellar.getAddress();
       if (!pubKey) return [];
 
-      const result = await stellar.getRecentTransactions(pubKey, 20);
-      
-      const entries: VaultEntry[] = [];
-      
-      for (const tx of result.transactions) {
-        if (tx.memo) {
-          const parts = tx.memo.split(":");
-          if (parts[0].startsWith("G") && parts.length >= 4) {
-            entries.push({
-              owner: parts[0],
-              action: parts[1],
-              amount: parseInt(parts[2], 10),
-              memo: parts.slice(3).join(":"),
-              timestamp: new Date(tx.created_at).getTime(),
-            });
-          } else if ((parts[0] === "d" || parts[0] === "w") && parts.length >= 3) {
-            entries.push({
-              owner: tx.source_account,
-              action: parts[0] === "d" ? "deposit" : "withdraw",
-              amount: parseInt(parts[1], 10),
-              memo: parts.slice(2).join(":"),
-              timestamp: new Date(tx.created_at).getTime(),
-            });
-          }
-        }
-      }
-
-      return entries;
+      const result = await stellar.simulateContractCall("get_entries");
+      return this.parseEntriesResult(result);
     } catch {
       return [];
     }
@@ -124,42 +104,54 @@ export class ContractClient {
 
   async getEntriesByOwner(ownerKey: string): Promise<VaultEntry[]> {
     try {
-      const result = await stellar.getRecentTransactions(ownerKey, 20);
-      
-      const entries: VaultEntry[] = [];
-      
-      for (const tx of result.transactions) {
-        if (tx.memo) {
-          const parts = tx.memo.split(":");
-          if (parts[0].startsWith("G") && parts.length >= 4 && parts[0] === ownerKey) {
-            entries.push({
-              owner: parts[0],
-              action: parts[1],
-              amount: parseInt(parts[2], 10),
-              memo: parts.slice(3).join(":"),
-              timestamp: new Date(tx.created_at).getTime(),
-            });
-          } else if ((parts[0] === "d" || parts[0] === "w") && parts.length >= 3 && tx.source_account === ownerKey) {
-            entries.push({
-              owner: tx.source_account,
-              action: parts[0] === "d" ? "deposit" : "withdraw",
-              amount: parseInt(parts[1], 10),
-              memo: parts.slice(2).join(":"),
-              timestamp: new Date(tx.created_at).getTime(),
-            });
-          }
-        }
-      }
-
-      return entries;
+      const ownerScVal = new StellarSdk.Address(ownerKey).toScVal();
+      const result = await stellar.simulateContractCall("get_entries_by_owner", [ownerScVal]);
+      return this.parseEntriesResult(result);
     } catch {
       return [];
     }
   }
 
   async getEntryCount(): Promise<number> {
-    const entries = await this.getEntries();
-    return entries.length;
+    try {
+      const result = await stellar.simulateContractCall("get_entry_count");
+      if (result && typeof result === "object" && "u32" in (result as Record<string, unknown>)) {
+        return (result as { u32: number }).u32;
+      }
+      return 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  private parseEntriesResult(result: unknown): VaultEntry[] {
+    if (!result || typeof result !== "object") return [];
+
+    const entries: VaultEntry[] = [];
+    const resultObj = result as Record<string, unknown>;
+
+    if (Array.isArray(resultObj.vec)) {
+      for (const entry of resultObj.vec) {
+        if (entry && typeof entry === "object") {
+          const entryObj = entry as Record<string, unknown>;
+          const owner = entryObj.owner as Record<string, unknown>;
+          const action = entryObj.action as Record<string, unknown>;
+          const amount = entryObj.amount as Record<string, unknown>;
+          const memo = entryObj.memo as Record<string, unknown>;
+          const timestamp = entryObj.timestamp as Record<string, unknown>;
+
+          entries.push({
+            owner: (owner?.Address as string) || "",
+            action: (action?.String as string) || "",
+            amount: Number(amount?.i128 || amount?.u64 || 0),
+            memo: (memo?.String as string) || "",
+            timestamp: Number(timestamp?.u64 || Date.now()),
+          });
+        }
+      }
+    }
+
+    return entries;
   }
 }
 

@@ -131,7 +131,7 @@ stellar-vault/
 
 ## Smart Contract
 
-**Contract ID:** `Native Simulation Mode` (Soroban Smart Contract in codebase, implemented with Stellar Native Transactions in UI)
+**Contract ID:** `SET_YOUR_CONTRACT_ID` (Soroban Smart Contract deployed to testnet)
 
 **Network:** Stellar Testnet (Test SDF Network ; September 2015)
 

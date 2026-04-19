@@ -1,6 +1,10 @@
 import * as StellarSdk from "@stellar/stellar-sdk";
 import { Horizon, Networks as StellarNetworks, TransactionBuilder, Operation, Asset as StellarAsset, Memo, Transaction as StellarTransaction } from "@stellar/stellar-sdk";
+import { Server as RpcServer } from "@stellar/stellar-sdk/rpc";
+import { Contract } from "@stellar/stellar-sdk";
 import type { Keypair } from "@stellar/stellar-sdk";
+import type { TxProgress } from "./contract-client";
+import { Api } from "@stellar/stellar-sdk/rpc";
 
 function isBrowser(): boolean {
   return typeof window !== "undefined";
@@ -100,11 +104,24 @@ export class StellarHelper {
     transactions: new TTLCache<TransactionsCacheData>(),
     account: new TTLCache<unknown>(),
   };
-  
+
   private server: Horizon.Server;
+  private sorobanRpc: RpcServer;
   private networkPassphrase: string;
   private network: "testnet" | "mainnet";
   private publicKey: string | null = null;
+  private contractId: string;
+  private _contract: Contract | null = null;
+
+  private get contract(): Contract {
+    if (!this._contract) {
+      if (!this.contractId) {
+        throw new NetworkError("Contract ID not set. Please deploy the contract and set NEXT_PUBLIC_CONTRACT_ID.");
+      }
+      this._contract = new Contract(this.contractId);
+    }
+    return this._contract;
+  }
 
   constructor(network: "testnet" | "mainnet" = "testnet") {
     this.network = network;
@@ -115,10 +132,23 @@ export class StellarHelper {
         : "https://horizon.stellar.org"
     );
 
+    this.sorobanRpc = new RpcServer(
+      network === "testnet"
+        ? "https://soroban-testnet.stellar.org:443"
+        : "https://soroban.stellar.org:443"
+    );
+
     this.networkPassphrase =
       network === "testnet"
         ? StellarNetworks.TESTNET
         : StellarNetworks.PUBLIC;
+
+    this.contractId = process.env.NEXT_PUBLIC_CONTRACT_ID || "";
+  }
+
+  setContractId(contractId: string): void {
+    this.contractId = contractId;
+    this._contract = null;
   }
 
   async connectWallet(): Promise<string> {
@@ -395,6 +425,118 @@ export class StellarHelper {
   formatAddress(address: string, start = 4, end = 4): string {
     if (address.length <= start + end) return address;
     return `${address.slice(0, start)}...${address.slice(-end)}`;
+  }
+
+  async invokeContract(params: {
+    method: string;
+    args?: StellarSdk.xdr.ScVal[];
+    publicKey: string;
+  }): Promise<{ hash: string; result: unknown }> {
+    const { method, args = [], publicKey } = params;
+
+    try {
+      this.emitProgress({ stage: "building", message: "Building transaction…" });
+
+      const account = await this.sorobanRpc.getAccount(publicKey);
+
+      const baseFee = StellarSdk.BASE_FEE;
+      const scValArgs = args as StellarSdk.xdr.ScVal[];
+      const transaction = new TransactionBuilder(account, {
+        fee: baseFee,
+        networkPassphrase: this.networkPassphrase,
+      })
+        .setTimeout(30)
+        .addOperation(this.contract.call(method, ...scValArgs))
+        .build();
+
+      let swk: typeof import("@creit.tech/stellar-wallets-kit");
+      if (!kitInitialized) {
+        swk = await import("@creit.tech/stellar-wallets-kit");
+        const { defaultModules } = await import("@creit.tech/stellar-wallets-kit/modules/utils");
+        const { Networks } = await import("@creit.tech/stellar-wallets-kit");
+        const kitNetwork = this.network === "testnet" ? Networks.TESTNET : Networks.PUBLIC;
+        swk.StellarWalletsKit.init({
+          network: kitNetwork,
+          modules: defaultModules(),
+        });
+        kitInitialized = true;
+      } else {
+        swk = await import("@creit.tech/stellar-wallets-kit");
+      }
+
+      this.emitProgress({ stage: "signing", message: "Waiting for wallet signature…" });
+      const { signedTxXdr } = await swk.StellarWalletsKit.signTransaction(transaction.toXDR(), {
+        networkPassphrase: this.networkPassphrase,
+        address: publicKey,
+      });
+
+      const parsedTx = new StellarTransaction(signedTxXdr, this.networkPassphrase);
+
+      this.emitProgress({ stage: "submitting", message: "Broadcasting to network…" });
+      const preparedTx = await this.sorobanRpc.prepareTransaction(parsedTx);
+
+      const sendResult = await this.sorobanRpc.sendTransaction(preparedTx);
+
+      this.emitProgress({ stage: "confirming", message: "Waiting for confirmation…" });
+      const txResult = await this.sorobanRpc.pollTransaction(sendResult.hash);
+
+      if (txResult.status === Api.GetTransactionStatus.SUCCESS) {
+        this.emitProgress({
+          stage: "success",
+          message: "Transaction confirmed!",
+          hash: sendResult.hash,
+        });
+        return { hash: sendResult.hash, result: (txResult as Api.GetSuccessfulTransactionResponse).returnValue };
+      } else if (txResult.status === Api.GetTransactionStatus.FAILED) {
+        const failedTx = txResult as Api.GetFailedTransactionResponse;
+        throw new NetworkError(`Transaction failed: ${failedTx.resultXdr}`);
+      }
+
+      throw new NetworkError(`Transaction ended with unexpected status: ${txResult.status}`);
+    } catch (error) {
+      if (error instanceof WalletRejectedError) throw error;
+      throw new NetworkError(`Contract invocation failed: ${error}`);
+    }
+  }
+
+  async simulateContractCall(method: string, args?: StellarSdk.xdr.ScVal[]): Promise<unknown> {
+    if (!this.contractId) {
+      throw new NetworkError("Contract ID not set");
+    }
+
+    const publicKey = await this.getAddress();
+    if (!publicKey) {
+      throw new WalletNotFoundError("No wallet connected");
+    }
+
+    const account = await this.sorobanRpc.getAccount(publicKey);
+
+    const scValArgs = (args || []) as StellarSdk.xdr.ScVal[];
+    const transaction = new TransactionBuilder(account, {
+      fee: StellarSdk.BASE_FEE,
+      networkPassphrase: this.networkPassphrase,
+    })
+      .setTimeout(30)
+      .addOperation(this.contract.call(method, ...scValArgs))
+      .build();
+
+    const simResult = await this.sorobanRpc.simulateTransaction(transaction);
+
+    if ("error" in simResult) {
+      throw new NetworkError(`Simulation failed: ${(simResult as Api.SimulateTransactionErrorResponse).error}`);
+    }
+
+    return (simResult as Api.SimulateTransactionSuccessResponse).result;
+  }
+
+  setProgressHandler(handler: (p: TxProgress) => void): void {
+    this.progressHandler = handler;
+  }
+
+  private progressHandler?: (p: TxProgress) => void;
+
+  private emitProgress(progress: TxProgress): void {
+    this.progressHandler?.(progress);
   }
 }
 
