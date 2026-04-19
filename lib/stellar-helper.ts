@@ -444,7 +444,7 @@ export class StellarHelper {
       const scValArgs = args as StellarSdk.xdr.ScVal[];
       
       const transactionForSim = new TransactionBuilder(account, {
-        fee: baseFee,
+        fee: String(baseFee),
         networkPassphrase: this.networkPassphrase,
       })
         .setTimeout(30)
@@ -590,7 +590,7 @@ export class StellarHelper {
 
     const scValArgs = (args || []) as StellarSdk.xdr.ScVal[];
     const transaction = new TransactionBuilder(account, {
-      fee: StellarSdk.BASE_FEE,
+      fee: String(StellarSdk.BASE_FEE),
       networkPassphrase: this.networkPassphrase,
     })
       .setTimeout(30)
