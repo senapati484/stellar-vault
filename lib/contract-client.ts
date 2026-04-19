@@ -1,6 +1,6 @@
 import { stellar, NetworkError, WalletRejectedError, InsufficientBalanceError } from "./stellar-helper";
 import * as StellarSdk from "@stellar/stellar-sdk";
-import { nativeToScVal } from "@stellar/stellar-sdk";
+import { nativeToScVal, scValToNative } from "@stellar/stellar-sdk";
 
 export type TxProgress =
   | { stage: "idle" }
@@ -43,14 +43,16 @@ export class ContractClient {
 
     try {
       const amountInSmallestUnit = Math.floor(parseFloat(amount) * 10_000_000);
+      const memoStr = memo || " ";
+      const actionStr = action === "deposit" ? "deposit" : "withdraw";
 
       const result = await stellar.invokeContract({
         method: "record_entry",
         args: [
           nativeToScVal(ownerKey, { type: "address" }),
-          nativeToScVal(action, { type: "symbol" }),
+          nativeToScVal(actionStr, { type: "string" }),
           nativeToScVal(amountInSmallestUnit, { type: "i128" }),
-          nativeToScVal(memo, { type: "string" }),
+          nativeToScVal(memoStr, { type: "string" }),
         ],
         publicKey: ownerKey,
       });
@@ -112,8 +114,10 @@ export class ContractClient {
   async getEntryCount(): Promise<number> {
     try {
       const result = await stellar.simulateContractCall("get_entry_count");
-      if (result && typeof result === "object" && "u32" in (result as Record<string, unknown>)) {
-        return (result as { u32: number }).u32;
+      const resultObj = result as { retval?: StellarSdk.xdr.ScVal };
+      if (resultObj?.retval) {
+        const count = scValToNative(resultObj.retval);
+        return Number(count);
       }
       return 0;
     } catch {
@@ -124,31 +128,25 @@ export class ContractClient {
   private parseEntriesResult(result: unknown): VaultEntry[] {
     if (!result || typeof result !== "object") return [];
 
-    const entries: VaultEntry[] = [];
-    const resultObj = result as Record<string, unknown>;
+    const resultObj = result as { retval?: StellarSdk.xdr.ScVal };
+    if (!resultObj.retval) return [];
 
-    if (Array.isArray(resultObj.vec)) {
-      for (const entry of resultObj.vec) {
-        if (entry && typeof entry === "object") {
-          const entryObj = entry as Record<string, unknown>;
-          const owner = entryObj.owner as Record<string, unknown>;
-          const action = entryObj.action as Record<string, unknown>;
-          const amount = entryObj.amount as Record<string, unknown>;
-          const memo = entryObj.memo as Record<string, unknown>;
-          const timestamp = entryObj.timestamp as Record<string, unknown>;
+    try {
+      const nativeData = scValToNative(resultObj.retval);
 
-          entries.push({
-            owner: (owner?.Address as string) || "",
-            action: (action?.String as string) || "",
-            amount: Number(amount?.i128 || amount?.u64 || 0),
-            memo: (memo?.String as string) || "",
-            timestamp: Number(timestamp?.u64 || Date.now()),
-          });
-        }
-      }
+      if (!Array.isArray(nativeData)) return [];
+
+      return nativeData.map((entry: any) => ({
+        owner: entry.owner || "",
+        action: entry.action || "",
+        amount: Number(entry.amount || 0),
+        memo: entry.memo || "",
+        timestamp: Number(entry.timestamp || Date.now()),
+      }));
+    } catch (e) {
+      console.error("Failed to parse entries using scValToNative:", e);
+      return [];
     }
-
-    return entries;
   }
 }
 

@@ -440,8 +440,9 @@ export class StellarHelper {
       const account = await this.sorobanRpc.getAccount(publicKey);
 
       // First, build and simulate the transaction to get the footprint
-      const baseFee = StellarSdk.BASE_FEE;
+      const baseFee = 5000; // Higher fee to avoid resource issues
       const scValArgs = args as StellarSdk.xdr.ScVal[];
+      
       const transactionForSim = new TransactionBuilder(account, {
         fee: baseFee,
         networkPassphrase: this.networkPassphrase,
@@ -456,9 +457,60 @@ export class StellarHelper {
         throw new NetworkError(`Simulation failed: ${simResult.error}`);
       }
 
-      // Now prepare the transaction with the simulated footprint
-      const preparedTx = await this.sorobanRpc.prepareTransaction(transactionForSim);
+      // IMPORTANT: We cannot use sorobanRpc.prepareTransaction() because it
+      // internally calls assembleTransaction → TransactionBuilder.cloneFrom(),
+      // which performs an `instanceof Transaction` check. Due to a dual-class
+      // identity issue (browser bundle uses one Transaction class, the RPC
+      // module uses a different nested stellar-base Transaction class),
+      // that instanceof check always fails with:
+      //   TypeError: expected a 'Transaction', got: [object Object]
+      //
+      // Instead, we manually rebuild the transaction with the simulation
+      // results (fee, sorobanData, auth) baked in, which entirely bypasses
+      // the problematic cloneFrom path.
+      const successSim = simResult as Api.SimulateTransactionSuccessResponse;
 
+      // Calculate the total fee: base fee + resource fee from simulation
+      const classicFeeNum = parseInt(String(baseFee)) || 0;
+      const minResourceFeeNum = parseInt(successSim.minResourceFee) || 0;
+      const totalFee = (classicFeeNum + minResourceFeeNum).toString();
+
+      // Rebuild a fresh account with the correct sequence number
+      // (same as the original, since we haven't submitted yet)
+      const freshAccount = await this.sorobanRpc.getAccount(publicKey);
+
+      const preparedBuilder = new TransactionBuilder(freshAccount, {
+        fee: totalFee,
+        networkPassphrase: this.networkPassphrase,
+      })
+        .setTimeout(30)
+        .setSorobanData(successSim.transactionData.build());
+
+      // Re-add the operation with auth from simulation
+      const originalOp = transactionForSim.operations[0] as {
+        type: string;
+        source?: string;
+        func: StellarSdk.xdr.HostFunction;
+        auth?: StellarSdk.xdr.SorobanAuthorizationEntry[];
+      };
+
+      if (originalOp.type === "invokeHostFunction") {
+        const existingAuth = originalOp.auth ?? [];
+        preparedBuilder.addOperation(
+          Operation.invokeHostFunction({
+            source: originalOp.source,
+            func: originalOp.func,
+            auth: existingAuth.length > 0 ? existingAuth : successSim.result?.auth ?? [],
+          })
+        );
+      } else {
+        // For non-invokeHostFunction ops (extendFootprintTtl, restoreFootprint),
+        // just re-add the original operation
+        preparedBuilder.addOperation(this.contract.call(method, ...scValArgs));
+      }
+
+      const preparedTx = preparedBuilder.build();
+      
       let swk: typeof import("@creit.tech/stellar-wallets-kit");
       if (!kitInitialized) {
         swk = await import("@creit.tech/stellar-wallets-kit");
@@ -475,15 +527,28 @@ export class StellarHelper {
       }
 
       this.emitProgress({ stage: "signing", message: "Waiting for wallet signature…" });
-      const { signedTxXdr } = await swk.StellarWalletsKit.signTransaction(preparedTx.toXDR(), {
-        networkPassphrase: this.networkPassphrase,
-        address: publicKey,
-      });
+      console.log("Before wallet sign. XDR:", preparedTx.toXDR());
+      let signedTxXdr;
+      try {
+        const signResult = await swk.StellarWalletsKit.signTransaction(preparedTx.toXDR(), {
+          networkPassphrase: this.networkPassphrase,
+          address: publicKey,
+        });
+        signedTxXdr = signResult.signedTxXdr;
+        console.log("Wallet sign complete.");
+      } catch (e: any) {
+        console.error("Error internally during SWK signing:", e);
+        throw e;
+      }
 
+      console.log("Instantiating parsedTx");
       const parsedTx = new StellarTransaction(signedTxXdr, this.networkPassphrase);
 
+      console.log("Sending transaction");
       this.emitProgress({ stage: "submitting", message: "Broadcasting to network…" });
       const sendResult = await this.sorobanRpc.sendTransaction(parsedTx);
+      
+      console.log("Send result:", sendResult);
 
       this.emitProgress({ stage: "confirming", message: "Waiting for confirmation…" });
       const txResult = await this.sorobanRpc.pollTransaction(sendResult.hash);
@@ -502,6 +567,10 @@ export class StellarHelper {
 
       throw new NetworkError(`Transaction ended with unexpected status: ${txResult.status}`);
     } catch (error) {
+      console.error("Caught error in invokeContract:", error);
+      if (error instanceof Error && error.stack) {
+        console.error("Stack trace:", error.stack);
+      }
       if (error instanceof WalletRejectedError) throw error;
       throw new NetworkError(`Contract invocation failed: ${error}`);
     }
