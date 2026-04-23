@@ -59,6 +59,30 @@ test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured out
 | Demo video (1 minute) | ✅ | [link above] |
 | 3+ meaningful commits | ✅ | See Git History section |
 
+## Level 5: User Onboarding & Feedback
+
+Level 5 requires onboarding 5 unique users and collecting their feedback to improve the dApp.
+
+### Table 1: Onboarded Users
+
+| User Name | User Email | User Wallet Address |
+|---|---|---|
+| TBD | TBD | TBD |
+| TBD | TBD | TBD |
+| TBD | TBD | TBD |
+| TBD | TBD | TBD |
+| TBD | TBD | TBD |
+
+### Table 2: User Feedback Implementation
+
+| User Name | User Email | User Wallet Address | Commit ID (Changes made) |
+|---|---|---|---|
+| TBD | TBD | TBD | TBD |
+| TBD | TBD | TBD | TBD |
+| TBD | TBD | TBD | TBD |
+| TBD | TBD | TBD | TBD |
+| TBD | TBD | TBD | TBD |
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -131,11 +155,11 @@ stellar-vault/
 
 ## Smart Contract
 
-**Contract ID:** `SET_YOUR_CONTRACT_ID` (Soroban Smart Contract deployed to testnet)
+**Contract ID:** `CBKMKRJTCF7WV5ZIVPUDSPP2SFXIKTGS45SVTAU2MAK6VBBQJRY5M4YJ` (Soroban Smart Contract deployed to testnet)
 
 **Network:** Stellar Testnet (Test SDF Network ; September 2015)
 
-**Explorer:** https://stellar.expert/explorer/testnet/contract/[CONTRACT_ID]
+**Explorer:** https://stellar.expert/explorer/testnet/contract/CBKMKRJTCF7WV5ZIVPUDSPP2SFXIKTGS45SVTAU2MAK6VBBQJRY5M4YJ
 
 ### Contract Functions
 
